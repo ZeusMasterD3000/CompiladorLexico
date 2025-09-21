@@ -80,12 +80,12 @@ El analizador léxico deberá reconocer y clasificar los siguientes componentes 
 ### 🔹 Operadores aritméticos
 | Valor | Operador |
 |-------|----------|
-| 0     | +        |
-| 1     | -        |
-| 2     | *        |
-| 3     | /        |
-| 4     | ^        |
-| 5     | %        |
+| 0     | ¬+¬      |
+| 1     | ¬-¬      |
+| 2     | ¬*¬      |
+| 3     | ¬/¬      |
+| 4     | ¬^¬      |
+| 5     | ¬%¬      |
 
 ### 🔹 Operadores lógicos
 | Valor | Operador | Significado |
