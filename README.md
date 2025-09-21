@@ -92,7 +92,7 @@ El analizador léxico deberá reconocer y clasificar los siguientes componentes 
 |-------|----------|-------------|
 | 0     | `\\`     | AND         |
 | 1     | `//`     | OR          |
-| 2     | `||`     | NOT         |
+| 2     | \|\|     | NOT         |
 
 ### 🔹 Operadores relacionales
 | Valor | Operador | Significado        |
