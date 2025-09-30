@@ -4,9 +4,13 @@
    Fecha: 30 Septiembre 2025
 */
 
+/* Bibliotecas útiles */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+/* Contador de líneas */
+int lineno = 1;
 
 /* ------- Estructuras para tablas ------- */
 typedef struct {
@@ -30,11 +34,11 @@ Ident *idents = NULL; int n_idents = 0, cap_idents = 0;
 LitStr *litstr = NULL; int n_litstr = 0, cap_litstr = 0;
 LitReal *litreal = NULL; int n_litreal = 0, cap_litreal = 0;
 
-/* Secuencia de tokens (simple almacenamiento) */
+/* Secuencia de tokens */
 typedef struct {
     int clase;
-    char valor[128]; /* valor textual o índice en string */
-    char lexema[256];
+    char valor[128]; 
+    char etm[256];
 } Token;
 Token *tokens = NULL; int n_tokens = 0, cap_tokens = 0;
 
@@ -46,7 +50,7 @@ void add_token(int clase, const char *valor, const char *lex) {
     }
     tokens[n_tokens].clase = clase;
     strncpy(tokens[n_tokens].valor, valor, sizeof(tokens[n_tokens].valor)-1);
-    strncpy(tokens[n_tokens].lexema, lex, sizeof(tokens[n_tokens].lexema)-1);
+    strncpy(tokens[n_tokens].etm, lex, sizeof(tokens[n_tokens].etm)-1);
     n_tokens++;
 }
 
@@ -54,6 +58,7 @@ int find_ident(const char *s) {
     for (int i=0;i<n_idents;i++) if (strcmp(idents[i].name, s)==0) return idents[i].pos;
     return -1;
 }
+
 int add_ident(const char *s) {
     int f = find_ident(s);
     if (f!=-1) return f;
@@ -69,7 +74,6 @@ int add_ident(const char *s) {
 }
 
 int add_litstr(const char *s) {
-    for (int i=0;i<n_litstr;i++) if (strcmp(litstr[i].valor, s)==0) return litstr[i].pos;
     if (n_litstr==cap_litstr) {
         cap_litstr = cap_litstr ? cap_litstr*2 : 64;
         litstr = realloc(litstr, cap_litstr * sizeof(LitStr));
@@ -81,7 +85,6 @@ int add_litstr(const char *s) {
 }
 
 int add_litreal(const char *s) {
-    for (int i=0;i<n_litreal;i++) if (strcmp(litreal[i].valor, s)==0) return litreal[i].pos;
     if (n_litreal==cap_litreal) {
         cap_litreal = cap_litreal ? cap_litreal*2 : 64;
         litreal = realloc(litreal, cap_litreal * sizeof(LitReal));
@@ -113,16 +116,26 @@ void print_tables() {
     }
 
     printf("\n==== Secuencia de tokens ====\n");
-    printf("idx\tclase\tvalor\t\tlexema\n");
+    printf("idx\tclase\tvalor\t\tetm\n");
     for (int i=0;i<n_tokens;i++) {
-        printf("%d\t%d\t%s\t\t%s\n", i, tokens[i].clase, tokens[i].valor, tokens[i].lexema);
+        printf("%d\t%d\t%s\t\t%s\n", i, tokens[i].clase, tokens[i].valor, tokens[i].etm);
+    }
+}
+
+/* Manejo de errores recuperable */
+void report_error(const char *msg, const char *etm) {
+    fprintf(stderr, "Error en línea %d: %s -> '%s'\n", lineno, msg, etm);
+    FILE *f = fopen("errores.txt", "a");
+    if(f) {
+        fprintf(f, "Error en línea %d: %s -> '%s'\n", lineno, msg, etm);
+        fclose(f);
     }
 }
 
 /* manejar fin de archivo */
-void yywrap() {
+int yywrap() {
     print_tables();
-    exit(0);
+    return 1;
 }
 
 %}
@@ -132,7 +145,7 @@ void yywrap() {
 DIG     [0-9]
 LETM    [a-z]
 UND     _
-SPC     [ \t\r\n]+
+SPC     [ \t\r\n]
 
 /* Palabras reservadas (catalogadas con sus valores en la gramática) */
 PALRES  cadena|caso|entero|flotante|hacer|mientras|ocaso|para|predet|salir|select|si|vacio
@@ -146,7 +159,7 @@ CTEINT  ([+-])?{DIG}+
    - dígitos sólo permitidos al final (cero o más dígitos)
    Ejemplos válidos: var, mi_var, abc_efg2, x_1
 */
-IDENT  {LETM}({LETM}|{UND})*{DIG}+|{LETM}({LETM}|{UND})*{LETM}
+IDENT  {LETM}(({LETM}|{UND})*{DIG}+|{LETM}({LETM}|{UND})*{LETM}|{LETM}*)
 
 /* Operadores de asignación (lista del catálogo) */
 OPASIG  "<<" "=" | ">>" "=" | "*=" | "/=" | "+=" | "-=" | "%=" | "&=" | "^=" | "|=" | "="
@@ -156,7 +169,7 @@ OPASIG  "<<" "=" | ">>" "=" | "*=" | "/=" | "+=" | "-=" | "%=" | "&=" | "^=" | "
 SIMSPE  [$%()\{\}\[\];\.]
 
 /* Operadores lógicos */
-OPLOG "\\\\" | "//" | "||"
+OPLOG "\\" | "//" | "||"
 
 /* Constantes reales: parte entera@decimal (opcional)@@exponente
    Notación EXACTA según enunciado:
@@ -175,19 +188,13 @@ OPART   "¬+¬"|"¬-¬"|"¬*¬"|"¬/¬"|"¬^¬"|"¬%¬"
 /* Operadores relacionales */
 OPREL   "::"|"¿:"|">:"|"<:"|">"|"<"
 
-%%
+%%  
 
-/* ---------- Reglas ---------- */
+{SPC}       { if(yytext[0]=='\n') lineno++; }   /* Ignorar espacios y contar líneas */
 
-/* Ignorar espacios */
-{SPC}       { /* ignorar */ }
+\"([^\\"]|\\n)*\"      { /* comentario: ignorar */ }   /* Comentarios entre comillas dobles " " */
 
-/* Comentarios entre comillas “ ” -> descartar todo lo que esté entre ellos (incluyen \n) */
-“([^”]|\n)*”      { /* comentario: ignorar, pero mantener conteo de líneas si se desea */ }
-
-/* Palabras reservadas (clase 0) */
-{PALRES}    {
-                /* mapear a valor (según tabla en el enunciado) */
+{PALRES}    {   /* Palabras reservadas */
                 int val = -1;
                 if (strcmp(yytext,"cadena")==0) val=0;
                 else if (strcmp(yytext,"caso")==0) val=1;
@@ -206,51 +213,50 @@ OPREL   "::"|"¿:"|">:"|"<:"|">"|"<"
                 add_token(0, buf, yytext);
             }
 
-/* Constantes enteras (clase 1) */
-{CTEINT}    {
+
+{CTEINT}    {   /* Constantes enteras */
                 add_token(1, yytext, yytext); /* valor: número mismo */
             }
 
-/* Identificadores (clase 2) */
-{IDENT}     {
+
+{IDENT}     {   /* Identificadores */
                 int pos = add_ident(yytext);
                 char buf[32]; snprintf(buf,sizeof(buf),"%d", pos);
                 add_token(2, buf, yytext);
             }
 
-/* Operadores de asignación (clase 3) */
-"<<="      { add_token(3, "6", yytext, yytext); }
-">>="      { add_token(3, "7", yytext, yytext); }
-"*="       { add_token(3, "1", yytext, yytext); }
-"/="       { add_token(3, "2", yytext, yytext); }
-"+="       { add_token(3, "3", yytext, yytext); }
-"-="       { add_token(3, "4", yytext, yytext); }
-"%="       { add_token(3, "5", yytext, yytext); }
-"&="       { add_token(3, "8", yytext, yytext); }
-"^="       { add_token(3, "9", yytext, yytext); }
-"|="       { add_token(3, "10", yytext, yytext); }
-"="        { add_token(3, "0", yytext, yytext); }
 
-/* Símbolos especiales (clase 4) */
-{SIMSPE}   {
-                /* encontrar índice si se desea; aquí se colocará el lexema como valor */
+"<<="      { add_token(3, "6", yytext); }   /* Operadores de asignación */
+">>="      { add_token(3, "7", yytext); }
+"*="       { add_token(3, "1", yytext); }
+"/="       { add_token(3, "2", yytext); }
+"+="       { add_token(3, "3", yytext); }
+"-="       { add_token(3, "4", yytext); }
+"%="       { add_token(3, "5", yytext); }
+"&="       { add_token(3, "8", yytext); }
+"^="       { add_token(3, "9", yytext); }
+"|="       { add_token(3, "10", yytext); }
+"="        { add_token(3, "0", yytext); }
+
+
+{SIMSPE}   {    /* Símbolos especiales */
                 add_token(4, yytext, yytext);
             }
 
-/* Operadores lógicos (clase 5) */
-"\\\\"     { add_token(5, "0", yytext); } /* \\ AND */
-"//"       { add_token(5, "1", yytext); } /* // OR */
-"\\|\\|"   { add_token(5, "2", yytext); } /* || NOT (según tu catálogo) */
 
-/* Constantes reales (clase 6) */
-{CTEREAL}  {
+"\\\\"     { add_token(5, "0", yytext); } /* Operadores lógicos AND OR NOT*/
+"//"       { add_token(5, "1", yytext); } 
+"||"       { add_token(5, "2", yytext); } 
+
+
+{CTEREAL}  {    /* Constantes reales */
                 int pos = add_litreal(yytext);
                 char buf[32]; snprintf(buf,sizeof(buf),"%d", pos);
                 add_token(6, buf, yytext);
            }
 
-/* Constantes cadena (clase 7) */
-{CTESTR}   {
+
+{CTESTR}   {    /* Constantes cadena */
                 /* eliminar el delimitador inicial ¿ y final ? para almacenar */
                 int L = strlen(yytext);
                 char inner[512];
@@ -263,43 +269,35 @@ OPREL   "::"|"¿:"|">:"|"<:"|">"|"<"
                 add_token(7, buf, yytext);
            }
 
-/* Operadores aritméticos (clase 8) */
-"¬+¬"      { add_token(8, "0", yytext); }
+
+"¬+¬"      { add_token(8, "0", yytext); }   /* Operadores aritméticos */
 "¬-¬"      { add_token(8, "1", yytext); }
 "¬*¬"      { add_token(8, "2", yytext); }
 "¬/¬"      { add_token(8, "3", yytext); }
 "¬^¬"      { add_token(8, "4", yytext); }
 "¬%¬"      { add_token(8, "5", yytext); }
 
-/* Operadores relacionales (clase 9) */
-"::"       { add_token(9, "0", yytext); }
+
+"::"       { add_token(9, "0", yytext); }   /* Operadores relacionales */
 "¿:"       { add_token(9, "1", yytext); }
 ">:"       { add_token(9, "4", yytext); } /* mayor o igual */
 "<:"       { add_token(9, "5", yytext); } /* menor o igual */
 ">"        { add_token(9, "2", yytext); }
 "<"        { add_token(9, "3", yytext); }
 
-/* Manejo de comillas (si detecta una ” sin abrir etc.) o caracteres desconocidos -> error (clase error) */
-\"          { /* handle double-quote stray */ add_token(-1,"ERR","\""); }
-.           { /* cualquier otro símbolo no reconocido se reporta como error y se continúa */ 
-                char buf[64]; snprintf(buf,sizeof(buf),"ERR");
-                add_token(-1, buf, yytext);
-           }
+.          { report_error("Símbolo no reconocido", yytext); }   /* Símbolos o caracteres no reconocidos */
 
 %%
 
 /* Fin del archivo fuente - main */
 int main(int argc, char **argv) {
-    if (argc < 2) {
-        fprintf(stderr, "Uso: %s <archivo_fuente>\n", argv[0]);
-        return 1;
-    }
-
+    FILE *g = fopen("errores.txt", "w");
+    fclose(g);
+    if (argc < 2) { fprintf(stderr, "Uso: %s <archivo_fuente>\n", argv[0]); return 1; }
     FILE *f = fopen(argv[1],"r");
     if (!f) { perror("fopen"); return 1; }
     yyin = f;
     yylex();
     fclose(f);
-    /* print_tables() se llama desde yywrap */
     return 0;
 }
