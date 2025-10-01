@@ -1,7 +1,20 @@
 %{
-/* Analizador léxico para proyecto - Flex (.l)
+/* 
+   Universidad Nacional Autónoma de México
+   Facultad de Ingeniería
+
+   Analizador léxico.
+
    Autores: Franco Ramírez Christian , Pérez Paitán Brent Armando
    Fecha: 30 Septiembre 2025
+
+   Materia: Compiladores
+   Clave: 0434
+   Profesora: M. C. Laura Sandoval Montaño
+
+   Objetivo: Elaborar un analizador léxico en lex/flex que reconozca 
+             los componentes léxicos pertenecientes a las clases abajo 
+             descritas y que fueron definidas en clase.
 */
 
 /* Bibliotecas útiles */
